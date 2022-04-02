@@ -12,6 +12,6 @@ Usage: echo_server [port]
 cargo run 8888
 ```
 
-**测试**
+**测试结果**
 
 ![](example.png)
