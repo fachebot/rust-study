@@ -1,16 +1,16 @@
+use async_std::io::{ReadExt, WriteExt};
+use async_std::net::{TcpListener, TcpStream};
+use async_std::task;
 use std::env;
-use std::io::{Error, Read, Write};
-use std::net::{TcpListener, TcpStream};
-use std::thread;
 
-fn handle_connection(addr: &str, mut stream: TcpStream) -> Result<(), Error> {
+async fn handle_connection(addr: &str, mut socket: TcpStream) -> Result<(), std::io::Error> {
     let mut buf = [0; 1024];
 
     loop {
         // 读取对端数据
-        let size = stream.read(&mut buf)?;
+        let size = socket.read(&mut buf).await?;
 
-        // 是否断开连接
+        // 是否关闭连接
         if size == 0 {
             return Ok(());
         }
@@ -20,49 +20,44 @@ fn handle_connection(addr: &str, mut stream: TcpStream) -> Result<(), Error> {
         println!("[{}] recv: {:?}", addr, message);
 
         // 写入读取到的数据
-        stream.write_all(&buf[0..size])?;
-        stream.flush()?;
+        socket.write_all(&buf[0..size]).await?;
+        socket.flush().await?;
         println!("[{}] send: {:?}", addr, message);
     }
 }
 
-fn main() {
+#[async_std::main]
+async fn main() -> Result<(), std::io::Error> {
     // 解析端口参数
     let args: Vec<String> = env::args().collect();
     if args.len() < 2 {
-        println!("Usage: echo_server [port]");
-        return;
+        eprintln!("Usage: echo_server [port]");
+        return Ok(());
     }
     let port: u16 = args[1].parse::<u16>().unwrap();
 
     // 监听指定端口
     let addr = format!("0.0.0.0:{0}", port);
-    let listener = TcpListener::bind(addr).unwrap();
+    let listener = TcpListener::bind(addr.as_str()).await?;
 
-    // 接受新的连接
-    for stream in listener.incoming() {
-        // 处理接受连接错误
-        if let Err(err) = stream {
-            println!("failed to accept connection, {:?}", err);
-            continue;
-        }
+    // 轮询接受连接并处理
+    loop {
+        // 接受新的连接
+        let (socket, peer_addr) = match listener.accept().await {
+            Err(err) => {
+                eprintln!("failed to accept connection, {}", err);
+                continue;
+            }
+            Ok((socket, peer_addr)) => (socket, peer_addr.to_string()),
+        };
 
-        // 处理获取地址错误
-        let stream = stream.unwrap();
-        let addr = stream.peer_addr();
-        if let Err(err) = addr {
-            println!("failed to get peer addr, {:?}", err);
-            continue;
-        }
+        println!("[{}] accepted", peer_addr);
 
-        // 输出对端地址信息
-        let addr = addr.unwrap().to_string();
-        println!("[{}] accepted", addr);
-
-        // 创建新线程处理连接
-        thread::spawn(move || match handle_connection(addr.as_str(), stream) {
-            Ok(()) => println!("[{}] disconnected", addr),
-            Err(e) => println!("[{}] connection error: {:?}", addr, e),
+        task::spawn(async move {
+            match handle_connection(peer_addr.as_str(), socket).await {
+                Ok(()) => println!("[{}] disconnected", peer_addr),
+                Err(err) => eprintln!("[{}] connection error: {:?}", peer_addr, err),
+            }
         });
     }
 }
