@@ -2,6 +2,10 @@
 
 A fresh FRAME-based [Substrate](https://www.substrate.io/) node, ready for hacking :rocket:
 
+![](snipaste_01.png)
+
+![](snipaste_02.png)
+
 ## Getting Started
 
 Follow these steps to get started with the Node Template :hammer_and_wrench:
